@@ -16,6 +16,8 @@ import google.generativeai as genai
 # so it can find `prompts.py` at that level.
 from prompts import PROMPT_MASTER, OUTPUT_JSON_SCHEMA, build_user_payload
 
+MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+
 # --- Fields and Validation ---
 
 REQUIRED_FIELDS = [
@@ -117,7 +119,7 @@ def run_agent(product_data: Dict) -> Dict:
     try:
         genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
-        model = genai.GenerativeModel('gemini-1.5-pro-latest')
+        model = genai.GenerativeModel(MODEL_NAME)
         response = model.generate_content(
             full_prompt,
             generation_config=genai.types.GenerationConfig(
