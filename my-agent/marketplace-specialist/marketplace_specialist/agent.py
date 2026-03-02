@@ -97,6 +97,7 @@ def _pad_or_slice(lst, size, fill=""):
         return lst[:size]
     return lst + [fill] * (size - len(lst))
 
+
 def _normalize_analise_estrategica(payload: dict) -> dict:
     """
     Ajusta o retorno do modelo para bater com OUTPUT_JSON_SCHEMA.
@@ -130,7 +131,6 @@ def _normalize_analise_estrategica(payload: dict) -> dict:
                 f"Decisão: {decisao}"
             ).strip()
         else:
-            # fallback
             ae["jornada_compra"] = str(ae.get("jornada_compra", "")).strip()
 
     # 3) mapear nomes alternativos -> nomes do schema
@@ -148,7 +148,6 @@ def _normalize_analise_estrategica(payload: dict) -> dict:
 
     ae["dores"] = _pad_or_slice(ae.get("dores"), 3, fill="Não informado.")
     ae["ganhos"] = _pad_or_slice(ae.get("ganhos"), 3, fill="Não informado.")
-
     ae["gatilhos_mentais"] = _pad_or_slice(ae.get("gatilhos_mentais"), 3, fill="Não informado.")
 
     # funcionalidades_chave: min 3, max 5
@@ -167,32 +166,122 @@ def _normalize_analise_estrategica(payload: dict) -> dict:
     payload["analise_estrategica"] = ae
     return payload
 
+
 def _ensure_required_fields(payload: dict) -> dict:
     """
     Garante que campos obrigatórios do JSON existam para evitar quebra no schema,
     mesmo que o modelo omita alguma parte.
-    OBS: não mexe em analise_estrategica (isso é função do _normalize_analise_estrategica).
     """
     if not isinstance(payload, dict):
         return {}
 
-    # top-level comuns do seu schema
     payload.setdefault("seo", {})
     payload.setdefault("titulos", [])
     payload.setdefault("modelo", "")
     payload.setdefault("descricao", "")
     payload.setdefault("roteiro_imagens", [])
+    payload.setdefault("analise_estrategica", {})
 
-    # se seu schema tiver outras chaves de topo, adicione aqui
     if isinstance(payload.get("seo"), dict):
         payload["seo"].setdefault("primarias", [])
         payload["seo"].setdefault("secundarias", [])
         payload["seo"].setdefault("termos_tecnicos", [])
 
-    # garante analise_estrategica existir (o normalize faz o resto)
-    payload.setdefault("analise_estrategica", {})
-
     return payload
+
+
+def _normalize_modelo(payload: dict) -> dict:
+    """Garante que 'modelo' respeite maxLength 100 do schema."""
+    if not isinstance(payload, dict):
+        return payload
+    modelo = str(payload.get("modelo", "") or "").strip()
+    # colapsa espaços
+    modelo = " ".join(modelo.split())
+    if len(modelo) > 100:
+        modelo = modelo[:100].rstrip()
+    payload["modelo"] = modelo
+    return payload
+
+
+def _normalize_roteiro_imagens(payload: dict) -> dict:
+    """
+    Schema exige em cada item:
+      imagem (int 1..7), titulo (str), objetivo (str), orientacao_visual (str)
+    O modelo às vezes manda:
+      numero -> imagem
+      texto  -> texto_sugerido
+    """
+    if not isinstance(payload, dict):
+        return payload
+
+    roteiro = payload.get("roteiro_imagens")
+    if not isinstance(roteiro, list):
+        payload["roteiro_imagens"] = []
+        return payload
+
+    fixed = []
+    used = set()
+
+    for idx, item in enumerate(roteiro):
+        if not isinstance(item, dict):
+            continue
+
+        # imagem / numero
+        raw_imagem = item.get("imagem", item.get("numero"))
+        try:
+            imagem = int(raw_imagem)
+        except Exception:
+            imagem = None
+
+        # se não vier válido, tenta inferir pela posição
+        if imagem is None:
+            imagem = idx + 1
+
+        # força 1..7
+        if imagem < 1:
+            imagem = 1
+        if imagem > 7:
+            imagem = 7
+
+        # evita duplicar número (se o modelo repetir)
+        if imagem in used:
+            # acha o próximo livre de 1..7
+            for n in range(1, 8):
+                if n not in used:
+                    imagem = n
+                    break
+        used.add(imagem)
+
+        titulo = str(item.get("titulo") or "").strip()
+        objetivo = str(item.get("objetivo") or "").strip()
+        orientacao = str(item.get("orientacao_visual") or "").strip()
+
+        # texto_sugerido pode vir como texto
+        texto_sugerido = item.get("texto_sugerido", item.get("texto", ""))
+        texto_sugerido = str(texto_sugerido or "").strip()
+
+        # garante required
+        if not titulo:
+            titulo = f"Imagem {imagem}"
+        if not objetivo:
+            objetivo = "Não informado."
+        if not orientacao:
+            orientacao = "Não informado."
+
+        fixed.append({
+            "imagem": imagem,
+            "titulo": titulo,
+            "objetivo": objetivo,
+            "orientacao_visual": orientacao,
+            # não é required no seu schema, mas ajuda no front
+            "texto_sugerido": texto_sugerido,
+        })
+
+    # ordena por imagem e garante no máximo 7
+    fixed.sort(key=lambda x: x["imagem"])
+    payload["roteiro_imagens"] = fixed[:7]
+    return payload
+
 
 def run_agent(product_data: Dict) -> Dict:
     if "GEMINI_API_KEY" not in os.environ:
@@ -214,7 +303,6 @@ def run_agent(product_data: Dict) -> Dict:
 
         model = genai.GenerativeModel(MODEL_NAME)
 
-        # Forma simples e compatível
         response = model.generate_content(
             full_prompt,
             generation_config={"response_mime_type": "application/json"},
@@ -224,15 +312,18 @@ def run_agent(product_data: Dict) -> Dict:
         response_json = extract_first_json(raw_text)
 
         if not response_json:
-            # loga um pedaço do retorno pra debugar no Render
             print("MODEL_RAW_TEXT_START")
             print(raw_text[:2000])
             print("MODEL_RAW_TEXT_END")
             return {"status": "error", "message": "Modelo não retornou um JSON válido."}
 
-        # Completa campos antes do schema
+        # 1) garante chaves de topo
         response_json = _ensure_required_fields(response_json)
+
+        # 2) normaliza estruturas que o Gemini varia
         response_json = _normalize_analise_estrategica(response_json)
+        response_json = _normalize_roteiro_imagens(response_json)
+        response_json = _normalize_modelo(response_json)
 
         if "status" not in response_json:
             response_json["status"] = "ok"
@@ -245,7 +336,6 @@ def run_agent(product_data: Dict) -> Dict:
         return response_json
 
     except Exception as e:
-        # stack trace no log do Render
         print("RUN_AGENT_EXCEPTION")
         traceback.print_exc()
         return {"status": "error", "message": f"Ocorreu um erro inesperado: {str(e)}"}
