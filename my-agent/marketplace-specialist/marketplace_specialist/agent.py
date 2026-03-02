@@ -11,16 +11,10 @@ except ImportError:
 
 import google.generativeai as genai
 
-# When app.py (in the parent dir) runs, this module is part of a package import.
-# Python's path includes the directory of the running script (where app.py is),
-# so it can find `prompts.py` at that level.
 from prompts import PROMPT_MASTER, OUTPUT_JSON_SCHEMA, build_user_payload
 
-
-# ✅ Use um modelo que EXISTE na sua chave (ListModels mostrou que gemini-1.5-flash NÃO existe)
-# Sugestão estável:
+# ✅ Use um modelo que EXISTE na sua chave
 MODEL_NAME = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash")
-
 
 # --- Fields and Validation ---
 
@@ -59,7 +53,7 @@ def _validate_required_fields(product_data: Dict) -> List[str]:
             missing.append(field)
 
     # Conditional validation for assembly
-    needs_assembly = str(product_data.get("necessita_montagem", "")).lower() == 'sim'
+    needs_assembly = str(product_data.get("necessita_montagem", "")).lower() == "sim"
     if needs_assembly:
         if not product_data.get("tempo_montagem"):
             missing.append("tempo_montagem")
@@ -81,12 +75,12 @@ def extract_first_json(text: str) -> Optional[Dict]:
     search_start_pos = 0
     while search_start_pos < len(text):
         try:
-            start_pos = text.index('{', search_start_pos)
+            start_pos = text.index("{", search_start_pos)
             brace_count = 1
             for i in range(start_pos + 1, len(text)):
-                if text[i] == '{':
+                if text[i] == "{":
                     brace_count += 1
-                elif text[i] == '}':
+                elif text[i] == "}":
                     brace_count -= 1
 
                 if brace_count == 0:
@@ -102,13 +96,12 @@ def extract_first_json(text: str) -> Optional[Dict]:
     return None
 
 
-# ✅ NOVO: garante campos obrigatórios do schema antes de validar
 def _ensure_required_fields(payload: dict) -> dict:
     """Garante que campos obrigatórios existam para passar no schema."""
     if not isinstance(payload, dict):
         return {}
 
-    # Campos de alto nível mais comuns (ajuste conforme seu schema real)
+    # Campos de alto nível (conforme seu schema OUTPUT_JSON_SCHEMA)
     payload.setdefault("persona", {})
     payload.setdefault("dores", [])
     payload.setdefault("ganhos", [])
@@ -144,44 +137,6 @@ def _ensure_required_fields(payload: dict) -> dict:
 
     return payload
 
-def _ensure_required_fields(payload: dict) -> dict:
-    """Garante que campos obrigatórios existam para passar no schema."""
-    if not isinstance(payload, dict):
-        return {}
-
-    payload.setdefault("persona", {})
-    payload.setdefault("dores", [])
-    payload.setdefault("ganhos", [])
-    payload.setdefault("jornada", {})
-    payload.setdefault("gatilhos", [])
-    payload.setdefault("jtbd", "")
-    payload.setdefault("puv", "")
-    payload.setdefault("funcionalidades_chave", [])
-    payload.setdefault("diferencial_competitivo", "")
-    payload.setdefault("prova_social", [])
-    payload.setdefault("seo", {})
-    payload.setdefault("titulos", [])
-    payload.setdefault("modelo", "")
-    payload.setdefault("descricao", "")
-    payload.setdefault("roteiro_imagens", [])
-
-    if isinstance(payload.get("persona"), dict):
-        payload["persona"].setdefault("demografia", "")
-        payload["persona"].setdefault("estilo_de_vida", "")
-        payload["persona"].setdefault("poder_aquisitivo", "")
-        payload["persona"].setdefault("contexto_de_uso", "")
-
-    if isinstance(payload.get("jornada"), dict):
-        payload["jornada"].setdefault("descoberta", "")
-        payload["jornada"].setdefault("consideracao", "")
-        payload["jornada"].setdefault("decisao", "")
-
-    if isinstance(payload.get("seo"), dict):
-        payload["seo"].setdefault("primarias", [])
-        payload["seo"].setdefault("secundarias", [])
-        payload["seo"].setdefault("termos_tecnicos", [])
-
-    return payload
 
 # --- Main Agent Function ---
 
@@ -198,7 +153,7 @@ def run_agent(product_data: Dict) -> Dict:
         return {
             "status": "missing_fields",
             "missing": missing_fields,
-            "questions": [QUESTIONS_MAP.get(field, f"O campo '{field}' está faltando.") for field in missing_fields]
+            "questions": [QUESTIONS_MAP.get(field, f"O campo '{field}' está faltando.") for field in missing_fields],
         }
 
     user_payload = build_user_payload(product_data)
@@ -208,27 +163,26 @@ def run_agent(product_data: Dict) -> Dict:
         genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
         model = genai.GenerativeModel(MODEL_NAME)
-       response = model.generate_content(
-    full_prompt,
-    generation_config={"response_mime_type": "application/json"}
-)
+        response = model.generate_content(
+            full_prompt,
+            generation_config={"response_mime_type": "application/json"},
+        )
 
-response_json = extract_first_json(response.text)
-if not response_json:
-    return {"status": "error", "message": "Modelo não retornou um JSON válido."}
+        response_json = extract_first_json(response.text)
+        if not response_json:
+            return {"status": "error", "message": "Modelo não retornou um JSON válido."}
 
-if not jsonschema:
-    return {"status": "error", "message": "Biblioteca jsonschema não instalada."}
+        if not jsonschema:
+            return {"status": "error", "message": "Biblioteca jsonschema não instalada."}
 
-# garante campos obrigatórios do schema
-response_json = _ensure_required_fields(response_json)
+        # ✅ garante que campos obrigatórios existam (evita 500 por required fields)
+        response_json = _ensure_required_fields(response_json)
 
-if "status" not in response_json:
-    response_json["status"] = "ok"
+        if "status" not in response_json:
+            response_json["status"] = "ok"
 
-jsonschema.validate(instance=response_json, schema=OUTPUT_JSON_SCHEMA)
-
-return response_json
+        jsonschema.validate(instance=response_json, schema=OUTPUT_JSON_SCHEMA)
+        return response_json
 
     except jsonschema.ValidationError as e:
         return {"status": "error", "message": f"Falha na validação do schema JSON: {e.message}"}
