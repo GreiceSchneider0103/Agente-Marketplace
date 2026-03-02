@@ -90,43 +90,81 @@ def extract_first_json(text: str) -> Optional[Dict]:
     return None
 
 
-def _ensure_required_fields(payload: dict) -> dict:
-    """Garante que campos obrigatórios existam para passar no schema."""
+def _pad_or_slice(lst, size, fill=""):
+    lst = lst if isinstance(lst, list) else []
+    lst = [str(x) for x in lst if x is not None]
+    if len(lst) >= size:
+        return lst[:size]
+    return lst + [fill] * (size - len(lst))
+
+def _normalize_analise_estrategica(payload: dict) -> dict:
+    """
+    Ajusta o retorno do modelo para bater com OUTPUT_JSON_SCHEMA.
+    Resolve: dores/ganhos aninhados, jornada em dict, nomes diferentes (jtbd/puv/prova_social).
+    """
     if not isinstance(payload, dict):
-        return {}
+        return payload
 
-    payload.setdefault("persona", {})
-    payload.setdefault("dores", [])
-    payload.setdefault("ganhos", [])
-    payload.setdefault("jornada", {})
-    payload.setdefault("gatilhos", [])
-    payload.setdefault("jtbd", "")
-    payload.setdefault("puv", "")
-    payload.setdefault("funcionalidades_chave", [])
-    payload.setdefault("diferencial_competitivo", "")
-    payload.setdefault("prova_social", [])
-    payload.setdefault("seo", {})
-    payload.setdefault("titulos", [])
-    payload.setdefault("modelo", "")
-    payload.setdefault("descricao", "")
-    payload.setdefault("roteiro_imagens", [])
+    ae = payload.get("analise_estrategica")
+    if not isinstance(ae, dict):
+        return payload
 
-    if isinstance(payload.get("persona"), dict):
-        payload["persona"].setdefault("demografia", "")
-        payload["persona"].setdefault("estilo_de_vida", "")
-        payload["persona"].setdefault("poder_aquisitivo", "")
-        payload["persona"].setdefault("contexto_de_uso", "")
+    # 1) dores/ganhos podem vir em dores_e_ganhos
+    deg = ae.get("dores_e_ganhos")
+    if isinstance(deg, dict):
+        if "dores" not in ae and isinstance(deg.get("dores"), list):
+            ae["dores"] = deg.get("dores")
+        if "ganhos" not in ae and isinstance(deg.get("ganhos"), list):
+            ae["ganhos"] = deg.get("ganhos")
 
-    if isinstance(payload.get("jornada"), dict):
-        payload["jornada"].setdefault("descoberta", "")
-        payload["jornada"].setdefault("consideracao", "")
-        payload["jornada"].setdefault("decisao", "")
+    # 2) jornada pode vir como dict (jornada_de_compra) mas o schema quer string (jornada_compra)
+    if "jornada_compra" not in ae:
+        jdc = ae.get("jornada_de_compra")
+        if isinstance(jdc, dict):
+            descoberta = str(jdc.get("descoberta", "")).strip()
+            consideracao = str(jdc.get("consideracao", "")).strip()
+            decisao = str(jdc.get("decisao", "")).strip()
+            ae["jornada_compra"] = (
+                f"Descoberta: {descoberta}\n"
+                f"Consideração: {consideracao}\n"
+                f"Decisão: {decisao}"
+            ).strip()
+        else:
+            # fallback
+            ae["jornada_compra"] = str(ae.get("jornada_compra", "")).strip()
 
-    if isinstance(payload.get("seo"), dict):
-        payload["seo"].setdefault("primarias", [])
-        payload["seo"].setdefault("secundarias", [])
-        payload["seo"].setdefault("termos_tecnicos", [])
+    # 3) mapear nomes alternativos -> nomes do schema
+    if "jtbd" not in ae and ae.get("job_to_be_done"):
+        ae["jtbd"] = ae.get("job_to_be_done")
 
+    if "puv" not in ae and ae.get("proposta_unica_de_valor"):
+        ae["puv"] = ae.get("proposta_unica_de_valor")
+
+    if "prova_social" not in ae and ae.get("prova_social_e_evidencias"):
+        ae["prova_social"] = ae.get("prova_social_e_evidencias")
+
+    # 4) garantir tipos e tamanhos conforme schema (min/max)
+    ae["persona"] = str(ae.get("persona", "")).strip()
+
+    ae["dores"] = _pad_or_slice(ae.get("dores"), 3, fill="Não informado.")
+    ae["ganhos"] = _pad_or_slice(ae.get("ganhos"), 3, fill="Não informado.")
+
+    ae["gatilhos_mentais"] = _pad_or_slice(ae.get("gatilhos_mentais"), 3, fill="Não informado.")
+
+    # funcionalidades_chave: min 3, max 5
+    fc = ae.get("funcionalidades_chave")
+    fc = fc if isinstance(fc, list) else []
+    fc = [str(x) for x in fc if x is not None]
+    if len(fc) < 3:
+        fc = fc + ["Não informado."] * (3 - len(fc))
+    ae["funcionalidades_chave"] = fc[:5]
+
+    ae["jtbd"] = str(ae.get("jtbd", "")).strip()
+    ae["puv"] = str(ae.get("puv", "")).strip()
+    ae["diferencial_competitivo"] = str(ae.get("diferencial_competitivo", "")).strip()
+    ae["prova_social"] = str(ae.get("prova_social", "")).strip()
+
+    payload["analise_estrategica"] = ae
     return payload
 
 
@@ -168,6 +206,7 @@ def run_agent(product_data: Dict) -> Dict:
 
         # Completa campos antes do schema
         response_json = _ensure_required_fields(response_json)
+        response_json = _normalize_analise_estrategica(response_json)
 
         if "status" not in response_json:
             response_json["status"] = "ok"
