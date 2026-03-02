@@ -172,9 +172,7 @@ def run_agent(product_data: Dict) -> Dict:
         model = genai.GenerativeModel(MODEL_NAME)
         response = model.generate_content(
             full_prompt,
-            generation_config=genai.types.GenerationConfig(
-                response_mime_type="application/json"
-            )
+            generation_config={"response_mime_type": "application/json"}
         )
 
         response_json = extract_first_json(response.text)
