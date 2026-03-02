@@ -167,6 +167,32 @@ def _normalize_analise_estrategica(payload: dict) -> dict:
     payload["analise_estrategica"] = ae
     return payload
 
+def _ensure_required_fields(payload: dict) -> dict:
+    """
+    Garante que campos obrigatórios do JSON existam para evitar quebra no schema,
+    mesmo que o modelo omita alguma parte.
+    OBS: não mexe em analise_estrategica (isso é função do _normalize_analise_estrategica).
+    """
+    if not isinstance(payload, dict):
+        return {}
+
+    # top-level comuns do seu schema
+    payload.setdefault("seo", {})
+    payload.setdefault("titulos", [])
+    payload.setdefault("modelo", "")
+    payload.setdefault("descricao", "")
+    payload.setdefault("roteiro_imagens", [])
+
+    # se seu schema tiver outras chaves de topo, adicione aqui
+    if isinstance(payload.get("seo"), dict):
+        payload["seo"].setdefault("primarias", [])
+        payload["seo"].setdefault("secundarias", [])
+        payload["seo"].setdefault("termos_tecnicos", [])
+
+    # garante analise_estrategica existir (o normalize faz o resto)
+    payload.setdefault("analise_estrategica", {})
+
+    return payload
 
 def run_agent(product_data: Dict) -> Dict:
     if "GEMINI_API_KEY" not in os.environ:
