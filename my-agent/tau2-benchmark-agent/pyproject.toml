@@ -1,0 +1,39 @@
+[project]
+name = "tau2-benchmark-agent"
+version = "0.1.0"
+description = "ADK Agent for Tau-Bench using vendored local source"
+authors = [{ name = "Google ADK Team", email = "no-reply@google.com" }]
+license = {text = "Apache License 2.0"}
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    "google-adk==1.19.0",
+    "google-genai==1.51.0",
+    "loguru==0.7.3",
+    "tenacity==9.1.2",
+    "tau2", # Just the name here
+]
+
+[tool.uv.sources]
+# This tells uv to use the local folder instead of looking on PyPI or GitHub
+tau2 = { path = "./vendor/tau2" }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[tool.ruff]
+extend = "../../../pyproject.toml"
+
+[tool.ruff.lint.isort]
+known-first-party = ["tau2_agent"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["tau2_agent"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

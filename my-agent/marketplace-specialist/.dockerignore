@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+.venv
+venv/
+env/
+
+# Git / Version control
+.git
+
+# IDE / Editor specific
+.idea/
+.vscode/
+
+# OS-specific
+.DS_Store

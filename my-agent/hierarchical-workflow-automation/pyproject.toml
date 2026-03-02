@@ -1,0 +1,57 @@
+[project]
+name = "cookie-scheduler-agent"
+version = "0.1.0"
+description = "AI agent for scheduling cookie deliveries using BigQuery, Vertex AI, and LangGraph"
+authors = [
+    { name = "Google LLC" }
+]
+license = { text = "Apache-2.0" }
+readme = "README.md"
+requires-python = ">=3.10"
+
+# Main dependencies extracted from your requirements list
+dependencies = [
+    "google-adk==1.13.0",
+    "google-cloud-aiplatform==1.118.0",
+    "google-cloud-bigquery==3.36.0",
+    "google-cloud-storage==2.19.0",
+    "google-genai==1.39.1",
+    "langchain==0.3.27",
+    "langgraph==0.3.34",
+    "fastapi==0.116.1",
+    "uvicorn==0.35.0",
+    "pydantic==2.11.9",
+    "python-dotenv==1.1.1",
+    "mcp==1.13.1",
+    "sqlalchemy==2.0.43",
+    "google-cloud-secret-manager==2.24.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==8.4.2",
+    "pytest-asyncio==1.1.0",
+    "pytest-mock==3.14.1",
+    "black==25.1.0",
+    "mypy==1.17.1",
+    "isort==6.0.1",
+]
+
+[tool.ruff]
+# Extends the root .toml you provided earlier
+extend = "../../../pyproject.toml"
+
+[tool.ruff.lint]
+ignore = ["C901", "PLR0912", "PLR0915"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["cookie_scheduler_agent"]
+
+[tool.agent-starter-pack.settings]
+# Based on the path referenced in your bash script
+agent_directory = "cookie_scheduler_agent"
+deployment_targets = ["agent_engine", "cloud_run"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

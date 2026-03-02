@@ -1,0 +1,55 @@
+[project]
+name = "google-trends-agent"
+version = "0.1.0"
+description = "AI Agent that is designed to surface the newest Google Trends in realtime"
+authors = [
+    {name = "Yehia Elshater", email = "elshater@google.com"}
+]
+license = {text = "Apache License 2.0"}
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "google-cloud-aiplatform[adk,agent-engines]>=1.104.0,<2.0.0",
+    "pydantic>=2.11.7,<3.0.0",
+    "uvicorn>=0.35.0,<0.36.0",
+    "jinja2>=3.1.6,<4.0.0",
+    "python-dotenv>=1.1.1,<2.0.0",
+    "google-genai>=1.26.0,<2.0.0",
+    "google-cloud-bigquery>=3.35.0,<4.0.0",
+    "google-adk>=1.7.0,<2.0.0",
+    "pandas>=2.3.1,<3.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+deployment = [
+    "absl-py>=2.2.2",
+]
+
+[tool.ruff]
+# Point back to the Master template in the root
+extend = "../../../pyproject.toml"
+
+[tool.ruff.lint]
+# Ignores function complication rule
+ignore = ["PLC0414"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+
+[tool.ruff.lint.isort]
+# CRITICAL: Ensures the trends agent source is treated as first-party
+known-first-party = ["google_trends_agent", "app"]
+
+[tool.hatch.build.targets.wheel]
+# Maps the package source. Update "app" to your specific folder name if different.
+packages = ["google_trends_agent", "app"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

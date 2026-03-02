@@ -1,0 +1,10 @@
+[tool.poetry]
+name = "marketplace-specialist"
+version = "0.1.0"
+description = "A product registration specialist for marketplaces."
+authors = ["Your Name <you@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+flask = "^3.0.0"
+flask-socketio = "^5.3.3"

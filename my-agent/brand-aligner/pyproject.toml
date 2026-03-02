@@ -1,0 +1,54 @@
+[project]
+name = "brand-aligner-agent"
+version = "0.1.0"
+description = "Brand Aligner Agent"
+authors = [{ name = "Mohab Fekry", email = "mfekry@google.com" }]
+license = "Apache License 2.0"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.121.0",
+  "google-adk==1.17.0",
+  "google-api-python-client>=2.187.0",
+  "google-auth>=2.43.0",
+  "google-auth-oauthlib>=1.2.2",
+  "google-cloud-aiplatform[adk,agent-engines,evaluation]<=1.126.1,>1.118.0",
+  "google-cloud-storage<=3.5.0,>=2.9.1",
+  "google-genai>=1.49.0",
+  "matplotlib>=3.10.7",
+  "numpy>=2.3.2",
+  "pandas>=2.3.2",
+]
+
+[dependency-groups]
+dev = [
+  "ruff>=0.12.11",
+  "pytest>=8.3.4",
+  "pytest-asyncio>=0.25.3",
+  "flake8>=7.3.0",
+]
+
+[tool.setuptools]
+packages = ["brand_aligner_agent", "deployment", "tests"]
+
+[tool.ruff]
+extend = "../../../pyproject.toml"
+
+[tool.ruff.lint]
+ignore = ["C901", "PLR0912"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["brand_aligner_agent"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "double"
+skip-magic-trailing-comma = false
+docstring-code-format = true
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true

@@ -1,0 +1,43 @@
+[project]
+name = "ai-security-agent"
+version = "0.1.0"
+description = "A sophisticated multi-agent system for comprehensive AI safety testing and vulnerability assessment"
+authors = [
+    { name = "Google LLC" }
+]
+license = {text = "Apache License 2.0"}
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    "google-adk>=1.18.0",
+    "google-genai>=1.9.0",
+    "google-cloud-aiplatform>=1.127.0",
+    "python-dotenv>=1.2.1",
+    "pyyaml>=6.0.3",
+    "tenacity>=9.1.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.4.6",
+    "mypy>=1.18.2",
+]
+
+[tool.ruff]
+# Point back to the Master template in the root
+extend = "../../../pyproject.toml"
+
+[tool.ruff.lint.isort]
+# Update "ai_security_agent" to match your actual folder name if it differs
+known-first-party = ["llm_red_team_agent", "app"]
+
+[tool.hatch.build.targets.wheel]
+# Ensures Hatchling bundles the correct source directories
+packages = ["llm_red_team_agent", "app"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
