@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 import os
 import json
+import traceback
 from typing import List, Dict, Optional
 
-# jsonschema precisa ser adicionado ao requirements.txt
+# jsonschema precisa estar no requirements.txt
 try:
     import jsonschema
 except ImportError:
-    jsonschema = None  # Handle case where it's not installed, checked later
+    jsonschema = None
 
 import google.generativeai as genai
 
 from prompts import PROMPT_MASTER, OUTPUT_JSON_SCHEMA, build_user_payload
 
-# ✅ Use um modelo que EXISTE na sua chave
+# Use um modelo que exista (na sua lista do ListModels)
 MODEL_NAME = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash")
-
-# --- Fields and Validation ---
 
 REQUIRED_FIELDS = [
     "nome_produto", "marca_linha", "materiais", "dimensoes", "peso_suportado",
@@ -46,32 +45,29 @@ QUESTIONS_MAP = {
 
 
 def _validate_required_fields(product_data: Dict) -> List[str]:
-    """Checks for missing required fields, including conditional ones."""
     missing = []
     for field in REQUIRED_FIELDS:
         if not product_data.get(field):
             missing.append(field)
 
-    # Conditional validation for assembly
-    needs_assembly = str(product_data.get("necessita_montagem", "")).lower() == "sim"
+    needs_assembly = str(product_data.get("necessita_montagem", "")).strip().lower() == "sim"
     if needs_assembly:
         if not product_data.get("tempo_montagem"):
             missing.append("tempo_montagem")
         if not product_data.get("nivel_montagem"):
             missing.append("nivel_montagem")
 
-    return list(set(missing))
+    return sorted(list(set(missing)))
 
-
-# --- JSON Extraction ---
 
 def extract_first_json(text: str) -> Optional[Dict]:
-    """Robustly extracts the first valid JSON object from a string using brace counting."""
+    # tenta direto
     try:
         return json.loads(text)
-    except json.JSONDecodeError:
+    except Exception:
         pass
 
+    # tenta por contagem de chaves
     search_start_pos = 0
     while search_start_pos < len(text):
         try:
@@ -82,17 +78,15 @@ def extract_first_json(text: str) -> Optional[Dict]:
                     brace_count += 1
                 elif text[i] == "}":
                     brace_count -= 1
-
                 if brace_count == 0:
-                    potential_json = text[start_pos: i + 1]
+                    candidate = text[start_pos : i + 1]
                     try:
-                        return json.loads(potential_json)
-                    except json.JSONDecodeError:
+                        return json.loads(candidate)
+                    except Exception:
                         break
             search_start_pos = start_pos + 1
         except ValueError:
             break
-
     return None
 
 
@@ -101,7 +95,6 @@ def _ensure_required_fields(payload: dict) -> dict:
     if not isinstance(payload, dict):
         return {}
 
-    # Campos de alto nível (conforme seu schema OUTPUT_JSON_SCHEMA)
     payload.setdefault("persona", {})
     payload.setdefault("dores", [])
     payload.setdefault("ganhos", [])
@@ -118,7 +111,6 @@ def _ensure_required_fields(payload: dict) -> dict:
     payload.setdefault("descricao", "")
     payload.setdefault("roteiro_imagens", [])
 
-    # Subestruturas
     if isinstance(payload.get("persona"), dict):
         payload["persona"].setdefault("demografia", "")
         payload["persona"].setdefault("estilo_de_vida", "")
@@ -138,13 +130,7 @@ def _ensure_required_fields(payload: dict) -> dict:
     return payload
 
 
-# --- Main Agent Function ---
-
 def run_agent(product_data: Dict) -> Dict:
-    """
-    Runs the full agent process: validates fields, calls the model,
-    parses the response, and validates against the JSON schema.
-    """
     if "GEMINI_API_KEY" not in os.environ:
         return {"status": "error", "message": "GEMINI_API_KEY não configurada."}
 
@@ -153,7 +139,7 @@ def run_agent(product_data: Dict) -> Dict:
         return {
             "status": "missing_fields",
             "missing": missing_fields,
-            "questions": [QUESTIONS_MAP.get(field, f"O campo '{field}' está faltando.") for field in missing_fields],
+            "questions": [QUESTIONS_MAP.get(f, f"O campo '{f}' está faltando.") for f in missing_fields],
         }
 
     user_payload = build_user_payload(product_data)
@@ -163,28 +149,38 @@ def run_agent(product_data: Dict) -> Dict:
         genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
         model = genai.GenerativeModel(MODEL_NAME)
+
+        # Forma simples e compatível
         response = model.generate_content(
             full_prompt,
             generation_config={"response_mime_type": "application/json"},
         )
 
-        response_json = extract_first_json(response.text)
+        raw_text = getattr(response, "text", "") or ""
+        response_json = extract_first_json(raw_text)
+
         if not response_json:
+            # loga um pedaço do retorno pra debugar no Render
+            print("MODEL_RAW_TEXT_START")
+            print(raw_text[:2000])
+            print("MODEL_RAW_TEXT_END")
             return {"status": "error", "message": "Modelo não retornou um JSON válido."}
 
-        if not jsonschema:
-            return {"status": "error", "message": "Biblioteca jsonschema não instalada."}
-
-        # ✅ garante que campos obrigatórios existam (evita 500 por required fields)
+        # Completa campos antes do schema
         response_json = _ensure_required_fields(response_json)
 
         if "status" not in response_json:
             response_json["status"] = "ok"
 
+        if not jsonschema:
+            return {"status": "error", "message": "Biblioteca jsonschema não instalada."}
+
         jsonschema.validate(instance=response_json, schema=OUTPUT_JSON_SCHEMA)
+
         return response_json
 
-    except jsonschema.ValidationError as e:
-        return {"status": "error", "message": f"Falha na validação do schema JSON: {e.message}"}
     except Exception as e:
+        # stack trace no log do Render
+        print("RUN_AGENT_EXCEPTION")
+        traceback.print_exc()
         return {"status": "error", "message": f"Ocorreu um erro inesperado: {str(e)}"}
