@@ -19,7 +19,7 @@ from prompts import PROMPT_MASTER, OUTPUT_JSON_SCHEMA, build_user_payload
 
 # ✅ Use um modelo que EXISTE na sua chave (ListModels mostrou que gemini-1.5-flash NÃO existe)
 # Sugestão estável:
-MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+MODEL_NAME = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash")
 
 
 # --- Fields and Validation ---
@@ -144,6 +144,44 @@ def _ensure_required_fields(payload: dict) -> dict:
 
     return payload
 
+def _ensure_required_fields(payload: dict) -> dict:
+    """Garante que campos obrigatórios existam para passar no schema."""
+    if not isinstance(payload, dict):
+        return {}
+
+    payload.setdefault("persona", {})
+    payload.setdefault("dores", [])
+    payload.setdefault("ganhos", [])
+    payload.setdefault("jornada", {})
+    payload.setdefault("gatilhos", [])
+    payload.setdefault("jtbd", "")
+    payload.setdefault("puv", "")
+    payload.setdefault("funcionalidades_chave", [])
+    payload.setdefault("diferencial_competitivo", "")
+    payload.setdefault("prova_social", [])
+    payload.setdefault("seo", {})
+    payload.setdefault("titulos", [])
+    payload.setdefault("modelo", "")
+    payload.setdefault("descricao", "")
+    payload.setdefault("roteiro_imagens", [])
+
+    if isinstance(payload.get("persona"), dict):
+        payload["persona"].setdefault("demografia", "")
+        payload["persona"].setdefault("estilo_de_vida", "")
+        payload["persona"].setdefault("poder_aquisitivo", "")
+        payload["persona"].setdefault("contexto_de_uso", "")
+
+    if isinstance(payload.get("jornada"), dict):
+        payload["jornada"].setdefault("descoberta", "")
+        payload["jornada"].setdefault("consideracao", "")
+        payload["jornada"].setdefault("decisao", "")
+
+    if isinstance(payload.get("seo"), dict):
+        payload["seo"].setdefault("primarias", [])
+        payload["seo"].setdefault("secundarias", [])
+        payload["seo"].setdefault("termos_tecnicos", [])
+
+    return payload
 
 # --- Main Agent Function ---
 
@@ -170,27 +208,27 @@ def run_agent(product_data: Dict) -> Dict:
         genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
         model = genai.GenerativeModel(MODEL_NAME)
-        response = model.generate_content(
-            full_prompt,
-            generation_config={"response_mime_type": "application/json"}
-        )
+       response = model.generate_content(
+    full_prompt,
+    generation_config={"response_mime_type": "application/json"}
+)
 
-        response_json = extract_first_json(response.text)
-        if not response_json:
-            return {"status": "error", "message": "Modelo não retornou um JSON válido."}
+response_json = extract_first_json(response.text)
+if not response_json:
+    return {"status": "error", "message": "Modelo não retornou um JSON válido."}
 
-        if not jsonschema:
-            return {"status": "error", "message": "Biblioteca jsonschema não instalada."}
+if not jsonschema:
+    return {"status": "error", "message": "Biblioteca jsonschema não instalada."}
 
-        if 'status' not in response_json:
-            response_json['status'] = 'ok'
+# garante campos obrigatórios do schema
+response_json = _ensure_required_fields(response_json)
 
-        # ✅ garante campos obrigatórios existam antes do schema validate
-        response_json = _ensure_required_fields(response_json)
+if "status" not in response_json:
+    response_json["status"] = "ok"
 
-        jsonschema.validate(instance=response_json, schema=OUTPUT_JSON_SCHEMA)
+jsonschema.validate(instance=response_json, schema=OUTPUT_JSON_SCHEMA)
 
-        return response_json
+return response_json
 
     except jsonschema.ValidationError as e:
         return {"status": "error", "message": f"Falha na validação do schema JSON: {e.message}"}
