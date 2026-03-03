@@ -1,94 +1,50 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
+<!-- ═══ INÍCIO: my-agent/marketplace-specialist/templates/login.html ═══ -->
+<!doctype html>
+<html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Agente Marketplace</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f4f7f6;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .login-container {
-            background-color: #ffffff;
-            padding: 40px;
-            border-radius: 8px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-            width: 100%;
-            max-width: 400px;
-            text-align: center;
-        }
-        .login-container h1 {
-            margin-bottom: 24px;
-            color: #333;
-            font-size: 24px;
-        }
-        .form-group {
-            margin-bottom: 20px;
-            text-align: left;
-        }
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            color: #555;
-            font-weight: 500;
-        }
-        .form-group input {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        .btn {
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 4px;
-            background-color: #007bff;
-            color: white;
-            font-size: 16px;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-        }
-        .btn:hover {
-            background-color: #0056b3;
-        }
-        .error-message {
-            color: #d9534f;
-            background-color: #f2dede;
-            border: 1px solid #ebccd1;
-            padding: 10px;
-            border-radius: 4px;
-            margin-top: 20px;
-            text-align: center;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RocketAds — Login</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
-    <div class="login-container">
-        <h1>Acesso ao Agente Marketplace</h1>
-        <form method="POST" action="{{ url_for('login') }}">
-            <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" required>
-            </div>
-            <div class="form-group">
-                <label for="password">Senha</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-            <button type="submit" class="btn">Entrar</button>
-        </form>
+<body class="auth-body">
+  <div class="auth-bg">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <div class="rocket-badge" aria-hidden="true">
+          <!-- Rocket icon -->
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M14.8 4.2c2.8.2 4.8 1.2 5 4.1.1 2.2-.7 5-3.4 7.7l-2.2 2.2c-.5.5-1.3.5-1.8 0l-6.3-6.3c-.5-.5-.5-1.3 0-1.8l2.2-2.2C10.8 5 12.6 4 14.8 4.2Z" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M6.9 13.6 4.5 16c-.8.8-.9 2.1-.2 3l.7.8c.9.9 2.2.8 3 0l2.4-2.4" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M14 7.8a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z" stroke="currentColor" stroke-width="1.6"/>
+          </svg>
+        </div>
+        <div class="auth-title">
+          <h1>RocketAds</h1>
+          <p>Agente Gerador de Anúncios</p>
+        </div>
+      </div>
+
+      <form class="auth-form" method="post" action="/login">
+        <label class="field">
+          <span>Email</span>
+          <input name="email" type="email" placeholder="seu@email.com" required />
+        </label>
+
+        <label class="field">
+          <span>Senha</span>
+          <input name="password" type="password" placeholder="••••••••" required />
+        </label>
+
+        <button class="btn btn-primary btn-lg" type="submit">Entrar</button>
+
         {% if error %}
-            <div class="error-message">
-                {{ error }}
-            </div>
+          <div class="alert alert-error" role="alert">{{ error }}</div>
         {% endif %}
+      </form>
     </div>
+  </div>
 </body>
 </html>
+<!-- ═══ FIM: my-agent/marketplace-specialist/templates/login.html ═══ -->

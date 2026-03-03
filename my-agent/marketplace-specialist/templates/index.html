@@ -1,157 +1,133 @@
+<!-- ═══ INÍCIO: my-agent/marketplace-specialist/templates/index.html ═══ -->
 <!doctype html>
 <html lang="pt-br">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Gerador de Anúncios (Chat)</title>
+  <title>RocketAds — Assistente</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
+<body class="app-body">
+
   <header class="topbar">
-    <div class="topbar__inner">
-      <h1 class="topbar__title">Gerador de Anúncios</h1>
-      <a class="topbar__link" href="{{ url_for('logout') }}">Sair</a>
+    <div class="brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M14.8 4.2c2.8.2 4.8 1.2 5 4.1.1 2.2-.7 5-3.4 7.7l-2.2 2.2c-.5.5-1.3.5-1.8 0l-6.3-6.3c-.5-.5-.5-1.3 0-1.8l2.2-2.2C10.8 5 12.6 4 14.8 4.2Z" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M6.9 13.6 4.5 16c-.8.8-.9 2.1-.2 3l.7.8c.9.9 2.2.8 3 0l2.4-2.4" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M14 7.8a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z" stroke="currentColor" stroke-width="1.6"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <div class="brand-name">RocketAds</div>
+        <div class="brand-sub">Gerador de Anúncios</div>
+      </div>
+      <span class="status-pill" id="statusPill">Coleta mínima</span>
+    </div>
+
+    <div class="topbar-actions">
+      <a class="link" href="/logout">Sair</a>
     </div>
   </header>
 
-  <main class="wrap">
-    <section class="chat-card" aria-label="Chat do agente">
-      <div id="chat" class="chat"></div>
+  <main class="layout">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <section class="card">
+        <h2>Checklist de Progresso</h2>
+        <ul class="checklist" id="checklist">
+          <li data-step="minimo"><span class="dot"></span> Coleta mínima (obrigatórios)</li>
+          <li data-step="uploads"><span class="dot"></span> Uploads opcionais (PDF/foto/planilha)</li>
+          <li data-step="validacao"><span class="dot"></span> Validação (missing_fields)</li>
+          <li data-step="extracao"><span class="dot"></span> Extração técnica (se houver arquivos)</li>
+          <li data-step="fontes"><span class="dot"></span> Pesquisa com fontes (persona/SEO)</li>
+          <li data-step="json"><span class="dot"></span> Geração do JSON (schema)</li>
+          <li data-step="docx"><span class="dot"></span> DOCX final (download)</li>
+        </ul>
+      </section>
 
-      <div class="composer">
-        <form id="chat-form" class="composer__form">
-          <!-- ETAPA 1 (obrigatórios) -->
-          <div class="grid">
-            <label class="field">
-              <span>Nome do produto *</span>
-              <input name="nome_produto" autocomplete="off" placeholder="Ex: Banqueta Safira 75cm (Kit 2)" required />
-            </label>
+      <section class="card" id="resumeCard">
+        <h2>Resumo do Produto</h2>
+        <div class="resume">
+          <div class="resume-row"><span>Nome</span><strong id="r_nome">—</strong></div>
+          <div class="resume-row"><span>Marca / Linha</span><strong id="r_marca">—</strong></div>
+          <div class="resume-row"><span>Materiais</span><strong id="r_materiais">—</strong></div>
+          <div class="resume-row"><span>Dimensões</span><strong id="r_dimensoes">—</strong></div>
+          <div class="resume-row"><span>Peso suportado</span><strong id="r_peso">—</strong></div>
+          <div class="resume-row"><span>Embalagem</span><strong id="r_embalagem">—</strong></div>
+          <div class="resume-row"><span>Montagem</span><strong id="r_montagem">—</strong></div>
+          <div class="resume-row"><span>Empresa</span><strong id="r_empresa">—</strong></div>
+          <div class="resume-row"><span>Marketplace</span><strong id="r_marketplace">—</strong></div>
+        </div>
+      </section>
+    </aside>
 
-            <label class="field">
-              <span>Marca / Linha *</span>
-              <input name="marca_linha" autocomplete="off" placeholder="Ex: MS Decor" required />
-            </label>
+    <!-- CHAT -->
+    <section class="chat">
+      <header class="chat-header">
+        <div>
+          <h1>Assistente de Anúncios</h1>
+          <p class="muted">Fluxo em chat + validação + JSON + DOCX</p>
+        </div>
+        <div class="chat-actions">
+          <button class="btn btn-ghost" id="btnViewJson" disabled>Ver JSON</button>
+          <button class="btn btn-danger" id="btnRestart">Reiniciar</button>
+        </div>
+      </header>
 
-            <label class="field">
-              <span>Fabricante (opcional)</span>
-              <input name="fabricante" autocomplete="off" placeholder="Ex: MS Decor Estofados" />
-            </label>
+      <div class="chat-body" id="chatBody" aria-live="polite"></div>
 
-            <label class="field">
-              <span>Materiais (estrutura/pés/estofamento) *</span>
-              <input name="materiais" autocomplete="off" placeholder="Ex: Madeira + tecido linho" required />
-            </label>
+      <footer class="composer">
+        <div class="upload-row">
+          <input id="file_photo" name="file_photo" type="file" accept="image/*" hidden />
+          <input id="file_pdf" name="file_pdf" type="file" accept="application/pdf" hidden />
+          <input id="file_sheet" name="file_sheet" type="file" accept=".csv,.xlsx,.xls,image/*,application/pdf" hidden />
 
-            <label class="field">
-              <span>Dimensões (L x A x P) *</span>
-              <input name="dimensoes" autocomplete="off" placeholder="Ex: 50 x 105 x 60 cm" required />
-            </label>
+          <button class="chip chip-blue" id="btnPhoto" type="button">📷 Foto</button>
+          <button class="chip chip-red" id="btnPdf" type="button">📄 PDF</button>
+          <button class="chip chip-green" id="btnSheet" type="button">📊 Planilha</button>
 
-            <label class="field">
-              <span>Peso máximo suportado (kg) *</span>
-              <input name="peso_suportado" type="number" min="1" step="1" placeholder="Ex: 120" required />
-            </label>
+          <div class="spacer"></div>
 
-            <label class="field">
-              <span>Conteúdo da embalagem *</span>
-              <input name="conteudo_embalagem" autocomplete="off" placeholder="Ex: 2 unidades" required />
-            </label>
-
-            <label class="field">
-              <span>Precisa montagem? *</span>
-              <select name="necessita_montagem" required>
-                <option value="">Selecione</option>
-                <option value="nao">Não</option>
-                <option value="sim">Sim</option>
-              </select>
-            </label>
-
-            <label class="field">
-              <span>Tempo de montagem (se sim)</span>
-              <input name="tempo_montagem" autocomplete="off" placeholder="Ex: 15 min" />
-            </label>
-
-            <label class="field">
-              <span>Nível de montagem (se sim)</span>
-              <select name="nivel_montagem">
-                <option value="">Selecione</option>
-                <option value="facil">Fácil</option>
-                <option value="medio">Médio</option>
-                <option value="dificil">Difícil</option>
-              </select>
-            </label>
-
-            <label class="field">
-              <span>Empresa *</span>
-              <input name="vendedor_empresa" autocomplete="off" placeholder="Ex: Lessul" required />
-            </label>
-
-            <label class="field">
-              <span>Canal / Marketplace *</span>
-              <select name="marketplace_alvo" required>
-                <option value="">Selecione</option>
-                <option value="Mercado Livre">Mercado Livre</option>
-                <option value="Magalu">Magalu</option>
-                <option value="Amazon">Amazon</option>
-                <option value="Shopee">Shopee</option>
-                <option value="Shopify">Shopify</option>
-              </select>
-            </label>
-
-            <label class="field">
-              <span>Cores disponíveis (opcional)</span>
-              <input name="cores_disponiveis" autocomplete="off" placeholder="Ex: Preto, Bege" />
-            </label>
+          <div class="quick">
+            <span class="label">Marketplace:</span>
+            <select id="marketplaceQuick" class="select">
+              <option value="">Selecionar</option>
+              <option>Mercado Livre</option>
+              <option>Magalu</option>
+              <option>Amazon</option>
+              <option>Shopee</option>
+              <option>Shopify</option>
+            </select>
           </div>
+        </div>
 
-          <!-- UPLOADS (opcionais - por enquanto só UI) -->
-          <div class="uploads">
-            <div class="uploads__title">Se você tiver, pode enviar agora (opcional):</div>
-            <div class="uploads__row">
-              <label class="upload">
-                <span>📷 Foto do produto</span>
-                <input id="file-photo" type="file" accept="image/*" />
-              </label>
-              <label class="upload">
-                <span>📄 PDF da ficha técnica</span>
-                <input id="file-pdf" type="file" accept="application/pdf" />
-              </label>
-              <label class="upload">
-                <span>🧾 Print / linha de planilha</span>
-                <input id="file-sheet" type="file" accept="image/*,.pdf" />
-              </label>
-            </div>
-            <div class="uploads__hint" id="uploads-hint"></div>
-          </div>
-
-          <!-- ETAPA 2 (confirmar 2 pontos, sem travar) -->
-          <div id="step2" class="step2 hidden">
-            <div class="step2__title">Confere rapidinho (sem travar):</div>
-            <div class="grid">
-              <label class="field">
-                <span>Garantia (padrão 3 meses)</span>
-                <input name="garantia" value="3 meses" />
-              </label>
-              <label class="field">
-                <span>Diferenciais reais (opcional)</span>
-                <input name="diferenciais_reais" placeholder="Ex: tecido hipoalergênico, reforço estrutural, pintura X..." />
-              </label>
-            </div>
-          </div>
-
-          <div class="actions">
-            <button id="btn-send" type="submit" class="btn">Gerar Word</button>
-            <button id="btn-reset" type="button" class="btn btn--ghost">Recomeçar</button>
-          </div>
-
-          <div class="footnote">
-            * O agente pergunta só o obrigatório primeiro. Se houver arquivos selecionados, ele ativa a checagem rápida (garantia + diferenciais).
-          </div>
+        <form class="composer-form" id="composerForm">
+          <input id="chatInput" class="input" placeholder="Digite aqui… (responda a pergunta acima)" autocomplete="off" />
+          <button class="btn btn-primary" id="btnSend" type="submit">Enviar</button>
         </form>
-      </div>
+
+        <div class="footer-actions" id="finalActions" style="display:none;">
+          <button class="btn btn-primary btn-lg" id="btnDocx">Gerar DOCX</button>
+        </div>
+      </footer>
     </section>
   </main>
+
+  <!-- JSON MODAL -->
+  <div class="modal" id="jsonModal" aria-hidden="true">
+    <div class="modal-backdrop" id="jsonClose"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>JSON gerado</h3>
+        <button class="btn btn-ghost" id="jsonCloseBtn">Fechar</button>
+      </div>
+      <pre class="code" id="jsonPre">{}</pre>
+    </div>
+  </div>
 
   <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
+<!-- ═══ FIM: my-agent/marketplace-specialist/templates/index.html ═══ -->
