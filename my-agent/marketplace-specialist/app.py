@@ -9,7 +9,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, s
 
 # Mantém seus módulos do projeto
 from marketplace_specialist.agent import run_agent
-from marketplace_specialist.docx_builder import build_docx
+from marketplace_specialist.docx_builder import generate_docx_from_data
 
 # PDF (opcional, mas recomendado)
 try:
@@ -356,14 +356,14 @@ def generate_docx():
     if not isinstance(result, dict) or result.get("status") != "ok":
         return jsonify(result if isinstance(result, dict) else {"status": "error", "message": "Falha ao gerar."}), 400
 
-    docx_bytes = build_docx(result, merged)
+    file_bytes, filename = generate_docx_from_data({**merged, **result})
 
     filename = f"anuncio_{re.sub(r'[^a-zA-Z0-9]+','_', (merged.get('nome_produto','anuncio'))).lower()}.docx"
     return send_file(
-        io.BytesIO(docx_bytes),
-        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        as_attachment=True,
-        download_name=filename
+    file_bytes,
+    mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    as_attachment=True,
+    download_name=filename
     )
 
 
