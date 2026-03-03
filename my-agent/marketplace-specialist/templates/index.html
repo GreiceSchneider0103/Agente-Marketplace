@@ -1,112 +1,157 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
+<!doctype html>
+<html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gerador de Anúncios para Marketplace</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Gerador de Anúncios (Chat)</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <header>
-        <h1>Gerador de Anúncios</h1>
-        <a href="{{ url_for('logout') }}" class="logout-link">Sair</a>
-    </header>
-    <main>
-        <form id="product-form">
-            <div class="form-grid">
-                <!-- Coluna 1 -->
-                <div class="form-column">
-                    <div class="form-group">
-                        <label for="nome_produto">Nome do Produto</label>
-                        <input type="text" id="nome_produto" name="nome_produto" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="marca_linha">Marca / Linha</label>
-                        <input type="text" id="marca_linha" name="marca_linha" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="materiais">Materiais Principais</label>
-                        <input type="text" id="materiais" name="materiais" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="dimensoes">Dimensões (AxLxP cm)</label>
-                        <input type="text" id="dimensoes" name="dimensoes" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="peso_suportado">Peso Suportado (kg)</label>
-                        <input type="text" id="peso_suportado" name="peso_suportado" required>
-                    </div>
-                     <div class="form-group">
-                        <label for="cores_disponiveis">Cores Disponíveis</label>
-                        <input type="text" id="cores_disponiveis" name="cores_disponiveis" required>
-                    </div>
-                </div>
+  <header class="topbar">
+    <div class="topbar__inner">
+      <h1 class="topbar__title">Gerador de Anúncios</h1>
+      <a class="topbar__link" href="{{ url_for('logout') }}">Sair</a>
+    </div>
+  </header>
 
-                <!-- Coluna 2 -->
-                <div class="form-column">
-                    <div class="form-group">
-                        <label for="diferenciais_reais">Diferenciais do Produto</label>
-                        <textarea id="diferenciais_reais" name="diferenciais_reais" rows="3" required></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label for="garantia">Garantia</label>
-                        <input type="text" id="garantia" name="garantia" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="conteudo_embalagem">Conteúdo da Embalagem</label>
-                        <input type="text" id="conteudo_embalagem" name="conteudo_embalagem" required>
-                    </div>
-                   <div class="form-group">
-                        <label for="necessita_montagem">Necessita Montagem?</label>
-                        <select id="necessita_montagem" name="necessita_montagem" required>
-                            <option value="não" selected>Não</option>
-                            <option value="sim">Sim</option>
-                        </select>
-                    </div>
-                     <div class="form-group">
-                        <label for="tempo_montagem">Tempo de Montagem</label>
-                        <input type="text" id="tempo_montagem" name="tempo_montagem">
-                    </div>
-                     <div class="form-group">
-                        <label for="nivel_montagem">Nível de Montagem</label>
-                        <input type="text" id="nivel_montagem" name="nivel_montagem">
-                    </div>
-                </div>
+  <main class="wrap">
+    <section class="chat-card" aria-label="Chat do agente">
+      <div id="chat" class="chat"></div>
 
-                <!-- Coluna 3 -->
-                <div class="form-column">
-                    <div class="form-group">
-                        <label for="publico_alvo">Público-alvo</label>
-                        <input type="text" id="publico_alvo" name="publico_alvo" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="ambientes_uso">Ambientes de Uso</label>
-                        <input type="text" id="ambientes_uso" name="ambientes_uso" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="vendedor_empresa">Vendedor / Empresa</label>
-                        <input type="text" id="vendedor_empresa" name="vendedor_empresa" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="marketplace_alvo">Marketplace Alvo</label>
-                        <select id="marketplace_alvo" name="marketplace_alvo" required>
-                            <option value="Mercado Livre" selected>Mercado Livre</option>
-                            <option value="Amazon">Amazon</option>
-                            <option value="Magalu">Magalu</option>
-                             <option value="Google">Google</option>
-                        </select>
-                    </div>
-                </div>
+      <div class="composer">
+        <form id="chat-form" class="composer__form">
+          <!-- ETAPA 1 (obrigatórios) -->
+          <div class="grid">
+            <label class="field">
+              <span>Nome do produto *</span>
+              <input name="nome_produto" autocomplete="off" placeholder="Ex: Banqueta Safira 75cm (Kit 2)" required />
+            </label>
+
+            <label class="field">
+              <span>Marca / Linha *</span>
+              <input name="marca_linha" autocomplete="off" placeholder="Ex: MS Decor" required />
+            </label>
+
+            <label class="field">
+              <span>Fabricante (opcional)</span>
+              <input name="fabricante" autocomplete="off" placeholder="Ex: MS Decor Estofados" />
+            </label>
+
+            <label class="field">
+              <span>Materiais (estrutura/pés/estofamento) *</span>
+              <input name="materiais" autocomplete="off" placeholder="Ex: Madeira + tecido linho" required />
+            </label>
+
+            <label class="field">
+              <span>Dimensões (L x A x P) *</span>
+              <input name="dimensoes" autocomplete="off" placeholder="Ex: 50 x 105 x 60 cm" required />
+            </label>
+
+            <label class="field">
+              <span>Peso máximo suportado (kg) *</span>
+              <input name="peso_suportado" type="number" min="1" step="1" placeholder="Ex: 120" required />
+            </label>
+
+            <label class="field">
+              <span>Conteúdo da embalagem *</span>
+              <input name="conteudo_embalagem" autocomplete="off" placeholder="Ex: 2 unidades" required />
+            </label>
+
+            <label class="field">
+              <span>Precisa montagem? *</span>
+              <select name="necessita_montagem" required>
+                <option value="">Selecione</option>
+                <option value="nao">Não</option>
+                <option value="sim">Sim</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Tempo de montagem (se sim)</span>
+              <input name="tempo_montagem" autocomplete="off" placeholder="Ex: 15 min" />
+            </label>
+
+            <label class="field">
+              <span>Nível de montagem (se sim)</span>
+              <select name="nivel_montagem">
+                <option value="">Selecione</option>
+                <option value="facil">Fácil</option>
+                <option value="medio">Médio</option>
+                <option value="dificil">Difícil</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Empresa *</span>
+              <input name="vendedor_empresa" autocomplete="off" placeholder="Ex: Lessul" required />
+            </label>
+
+            <label class="field">
+              <span>Canal / Marketplace *</span>
+              <select name="marketplace_alvo" required>
+                <option value="">Selecione</option>
+                <option value="Mercado Livre">Mercado Livre</option>
+                <option value="Magalu">Magalu</option>
+                <option value="Amazon">Amazon</option>
+                <option value="Shopee">Shopee</option>
+                <option value="Shopify">Shopify</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Cores disponíveis (opcional)</span>
+              <input name="cores_disponiveis" autocomplete="off" placeholder="Ex: Preto, Bege" />
+            </label>
+          </div>
+
+          <!-- UPLOADS (opcionais - por enquanto só UI) -->
+          <div class="uploads">
+            <div class="uploads__title">Se você tiver, pode enviar agora (opcional):</div>
+            <div class="uploads__row">
+              <label class="upload">
+                <span>📷 Foto do produto</span>
+                <input id="file-photo" type="file" accept="image/*" />
+              </label>
+              <label class="upload">
+                <span>📄 PDF da ficha técnica</span>
+                <input id="file-pdf" type="file" accept="application/pdf" />
+              </label>
+              <label class="upload">
+                <span>🧾 Print / linha de planilha</span>
+                <input id="file-sheet" type="file" accept="image/*,.pdf" />
+              </label>
             </div>
-            <div class="form-actions">
-                <button type="submit">Gerar Anúncio</button>
+            <div class="uploads__hint" id="uploads-hint"></div>
+          </div>
+
+          <!-- ETAPA 2 (confirmar 2 pontos, sem travar) -->
+          <div id="step2" class="step2 hidden">
+            <div class="step2__title">Confere rapidinho (sem travar):</div>
+            <div class="grid">
+              <label class="field">
+                <span>Garantia (padrão 3 meses)</span>
+                <input name="garantia" value="3 meses" />
+              </label>
+              <label class="field">
+                <span>Diferenciais reais (opcional)</span>
+                <input name="diferenciais_reais" placeholder="Ex: tecido hipoalergênico, reforço estrutural, pintura X..." />
+              </label>
             </div>
+          </div>
+
+          <div class="actions">
+            <button id="btn-send" type="submit" class="btn">Gerar Word</button>
+            <button id="btn-reset" type="button" class="btn btn--ghost">Recomeçar</button>
+          </div>
+
+          <div class="footnote">
+            * O agente pergunta só o obrigatório primeiro. Se houver arquivos selecionados, ele ativa a checagem rápida (garantia + diferenciais).
+          </div>
         </form>
-        
-        <div id="results-container">
-            <!-- Os resultados da geração aparecerão aqui -->
-        </div>
-    </main>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+      </div>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
