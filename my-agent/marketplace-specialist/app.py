@@ -83,3 +83,29 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     
     app.run(host='0.0.0.0', port=port, debug=debug_mode)
+
+# app.py (exemplo)
+from flask import Flask, request, send_file, jsonify
+import io
+from marketplace_specialist.agent import run_agent
+from marketplace_specialist.docx_builder import build_docx
+
+app = Flask(__name__)
+
+@app.post("/generate-docx")
+def generate_docx():
+    product_data = request.get_json(force=True) or {}
+
+    result = run_agent(product_data)
+    if result.get("status") != "ok":
+        return jsonify(result), 400
+
+    docx_bytes = build_docx(result, product_data)
+
+    filename = "anuncio_completo.docx"
+    return send_file(
+        io.BytesIO(docx_bytes),
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        as_attachment=True,
+        download_name=filename
+    )

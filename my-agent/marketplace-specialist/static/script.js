@@ -23,36 +23,27 @@ document.addEventListener('DOMContentLoaded', () => {
       productData[key] = typeof value === 'string' ? value.trim() : value;
     });
 
-    try {
-      const response = await fetch('/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(productData),
+    async function gerarWord(payload) {
+      const res = await fetch("/generate-docx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
-
-      if (response.status === 401) {
-        window.location.href = '/login';
-        return;
+    
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Falha ao gerar Word");
       }
-
-      let result = null;
-      try {
-        result = await response.json();
-      } catch (_) {
-        // ignore
-      }
-
-      if (!response.ok) {
-        renderError((result && result.message) ? result.message : `Erro ${response.status}: o servidor respondeu com erro.`);
-        return;
-      }
-
-      renderResult(result);
-    } catch (err) {
-      console.error('Fetch error:', err);
-      renderError('Não foi possível conectar ao servidor. Verifique sua conexão.');
-    } finally {
-      setLoading(false);
+    
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "anuncio_completo.docx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
     }
   });
 
