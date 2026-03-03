@@ -1,202 +1,70 @@
+# -*- coding: utf-8 -*-
 import os
-import json
-import logging
-import re
 import io
-import csv
-from typing import Any, Dict, Tuple
+import re
+import logging
+from functools import wraps
 
-from flask import Flask, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file
 
-from docx_builder import generate_docx_from_data
-from marketplace_specialist import MarketplaceSpecialist
+# Mantém seus módulos do projeto
+from marketplace_specialist.agent import run_agent
+from marketplace_specialist.docx_builder import build_docx
 
-# Optional deps (upload parsing)
+# PDF (opcional, mas recomendado)
 try:
-    import pdfplumber  # type: ignore
-except Exception:
+    import pdfplumber
+except Exception:  # pragma: no cover
     pdfplumber = None
-
-try:
-    from openpyxl import load_workbook  # type: ignore
-except Exception:
-    load_workbook = None
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# Session secret (support both names)
-app.secret_key = os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY") or "dev-secret-key"
+# --- Configuration ---
+app.secret_key = os.environ.get("SECRET_KEY", "a-very-insecure-development-secret-key")
+app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25MB
 
-# Instantiate specialist
-specialist = MarketplaceSpecialist()
+# --- Authentication ---
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+
+# Campos obrigatórios (espelhado do seu fluxo)
+REQUIRED_FIELDS = [
+    "nome_produto",
+    "marca_linha",
+    "materiais",
+    "dimensoes",
+    "peso_suportado",
+    "conteudo_embalagem",
+    "necessita_montagem",
+    "empresa",
+    "marketplace_alvo",
+]
+
+QUESTIONS = {
+    "nome_produto": "Qual é o nome do produto?",
+    "marca_linha": "Qual é a marca ou linha do produto?",
+    "materiais": "Quais são os materiais principais? (estrutura/pés/estofamento)",
+    "dimensoes": "Quais são as dimensões (L x A x P)?",
+    "peso_suportado": "Qual é o peso máximo suportado?",
+    "conteudo_embalagem": "O que vem na embalagem?",
+    "necessita_montagem": "Precisa de montagem? (sim/não)",
+    "tempo_montagem": "Qual o tempo médio de montagem?",
+    "nivel_montagem": "Qual o nível da montagem? (fácil/médio/difícil)",
+    "empresa": "Qual é a empresa/vendedor?",
+    "marketplace_alvo": "Em qual canal/marketplace será o anúncio?",
+}
 
 
-def login_required(fn):
-    def wrapper(*args, **kwargs):
-        if not session.get("logged_in"):
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user_email" not in session:
+            if request.path in ("/generate", "/generate-docx"):
+                return jsonify({"status": "error", "message": "Não autenticado."}), 401
             return redirect(url_for("login"))
-        return fn(*args, **kwargs)
-
-    wrapper.__name__ = fn.__name__
-    return wrapper
-
-
-# ----------------------------
-# Upload parsing (PDF/Sheet)
-# ----------------------------
-
-def _extract_structured_from_text(text: str) -> Dict[str, str]:
-    """Best-effort extraction of fields from text."""
-    if not text:
-        return {}
-
-    def _first(patterns):
-        for p in patterns:
-            m = re.search(p, text, re.IGNORECASE)
-            if m:
-                return m.group(1).strip()
-        return ""
-
-    out: Dict[str, str] = {}
-
-    nome = _first([
-        r"(?:produto|nome do produto)\s*[:\-]\s*([^\n\r]+)",
-    ])
-    if nome:
-        out["nome_produto"] = nome
-
-    marca = _first([
-        r"(?:marca|linha)\s*[:\-]\s*([^\n\r]+)",
-        r"fabricante\s*[:\-]\s*([^\n\r]+)",
-    ])
-    if marca:
-        out["marca_linha"] = marca
-
-    materiais = _first([
-        r"materiais?\s*[:\-]\s*([^\n\r]+)",
-        r"estrutura\s*[:\-]\s*([^\n\r]+)",
-    ])
-    if materiais:
-        out["materiais"] = materiais
-
-    dim = _first([
-        r"dimens(?:o|õ)es\s*[:\-]\s*([\d,.]+\s*[xX]\s*[\d,.]+\s*[xX]\s*[\d,.]+\s*(?:cm|mm|m)?)",
-        r"([\d,.]+\s*[xX]\s*[\d,.]+\s*[xX]\s*[\d,.]+\s*(?:cm|mm|m))",
-    ])
-    if dim:
-        out["dimensoes"] = dim
-
-    peso = _first([
-        r"peso\s*suportado\s*[:\-]\s*([\d,.]+\s*kg)",
-        r"suporta\s*at(?:e|é)\s*([\d,.]+\s*kg)",
-    ])
-    if peso:
-        out["peso_suportado"] = peso
-
-    conteudo = _first([
-        r"conte(?:u|ú)do\s+da\s+embalagem\s*[:\-]\s*([^\n\r]+)",
-        r"itens\s+inclusos\s*[:\-]\s*([^\n\r]+)",
-    ])
-    if conteudo:
-        out["conteudo_embalagem"] = conteudo
-
-    montagem = _first([
-        r"necessita\s+montagem\s*[:\-]\s*(sim|n(?:a|ã)o)",
-        r"montagem\s*[:\-]\s*(sim|n(?:a|ã)o)",
-    ]).lower()
-    if montagem in {"sim", "não", "nao"}:
-        out["necessita_montagem"] = "sim" if montagem == "sim" else "nao"
-
-    return out
-
-
-def _read_pdf_text(file_storage) -> str:
-    if not pdfplumber:
-        return ""
-    try:
-        file_storage.stream.seek(0)
-        with pdfplumber.open(file_storage.stream) as pdf:
-            parts = []
-            for page in pdf.pages[:10]:
-                t = page.extract_text() or ""
-                if t:
-                    parts.append(t)
-        return "\n".join(parts)
-    except Exception as e:
-        app.logger.warning(f"PDF parse failed: {e}")
-        return ""
-
-
-def _read_sheet_preview(file_storage) -> str:
-    filename = (file_storage.filename or "").lower()
-    try:
-        file_storage.stream.seek(0)
-        data = file_storage.stream.read()
-    except Exception:
-        return ""
-
-    if filename.endswith(".csv"):
-        try:
-            s = data.decode("utf-8", errors="ignore")
-            reader = csv.reader(io.StringIO(s))
-            rows = []
-            for i, row in enumerate(reader):
-                rows.append("\t".join(row))
-                if i >= 40:
-                    break
-            return "\n".join(rows)
-        except Exception:
-            return ""
-
-    if filename.endswith(".xlsx") and load_workbook:
-        try:
-            wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
-            ws = wb.active
-            rows = []
-            for r_idx, row in enumerate(ws.iter_rows(values_only=True)):
-                rows.append("\t".join(["" if v is None else str(v) for v in row]))
-                if r_idx >= 40:
-                    break
-            return "\n".join(rows)
-        except Exception as e:
-            app.logger.warning(f"XLSX parse failed: {e}")
-            return ""
-
-    return ""
-
-
-def process_uploads(files) -> Tuple[Dict[str, str], Dict[str, Any]]:
-    """Return (extracted_fields, uploads_context)."""
-    extracted: Dict[str, str] = {}
-    uploads_ctx: Dict[str, Any] = {}
-
-    pdf = files.get("file_pdf")
-    if pdf and getattr(pdf, "filename", ""):
-        pdf_text = _read_pdf_text(pdf)
-        uploads_ctx["pdf_name"] = pdf.filename
-        uploads_ctx["pdf_text"] = pdf_text[:8000] if pdf_text else ""
-        if pdf_text:
-            extracted.update(_extract_structured_from_text(pdf_text))
-
-    sheet = files.get("file_sheet")
-    if sheet and getattr(sheet, "filename", ""):
-        preview = _read_sheet_preview(sheet)
-        uploads_ctx["sheet_name"] = sheet.filename
-        uploads_ctx["sheet_preview"] = preview[:8000] if preview else ""
-        if preview:
-            extracted.update(_extract_structured_from_text(preview))
-
-    photo = files.get("file_photo")
-    if photo and getattr(photo, "filename", ""):
-        uploads_ctx["photo_name"] = photo.filename
-
-    return extracted, uploads_ctx
-
-
-@app.get("/healthz")
-def healthz():
-    return "OK", 200
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -204,101 +72,302 @@ def login():
     if request.method == "POST":
         email = request.form.get("email")
         password = request.form.get("password")
-        if email == os.getenv("ADMIN_EMAIL") and password == os.getenv("ADMIN_PASSWORD"):
-            session["logged_in"] = True
+
+        if not ADMIN_EMAIL or not ADMIN_PASSWORD:
+            return render_template(
+                "login.html",
+                error="Credenciais de administrador não configuradas no servidor."
+            )
+
+        if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
+            session["user_email"] = email
             return redirect(url_for("home"))
-        return render_template("login.html", error="Credenciais inválidas")
+
+        return render_template("login.html", error="Email ou senha inválidos.")
+
     return render_template("login.html")
 
 
-@app.get("/logout")
+@app.route("/logout")
 def logout():
-    session.pop("logged_in", None)
+    session.clear()
     return redirect(url_for("login"))
 
 
-@app.get("/")
+@app.route("/")
 @login_required
 def home():
     return render_template("index.html")
 
 
-@app.post("/generate")
+@app.get("/healthz")
+def healthz():
+    return "ok", 200
+
+
+def _normalize_yes_no(v: str) -> str:
+    t = str(v or "").strip().lower()
+    if t in ("s", "sim", "yes", "y"):
+        return "sim"
+    if t in ("n", "nao", "não", "no"):
+        return "não"
+    return str(v or "").strip()
+
+
+def _extract_pdf_text(file_storage) -> str:
+    if not pdfplumber:
+        app.logger.warning("pdfplumber não está instalado; pulando extração de PDF.")
+        return ""
+    try:
+        # file_storage é werkzeug FileStorage
+        with pdfplumber.open(file_storage.stream) as pdf:
+            parts = []
+            for page in pdf.pages:
+                txt = page.extract_text() or ""
+                if txt.strip():
+                    parts.append(txt)
+        return "\n".join(parts).strip()
+    except Exception as e:
+        app.logger.exception("Falha ao ler PDF: %s", e)
+        return ""
+
+
+def _pick_first(patterns, text):
+    for p in patterns:
+        m = re.search(p, text, flags=re.IGNORECASE | re.MULTILINE)
+        if m:
+            return (m.group(1) or "").strip()
+    return ""
+
+
+def _extract_fields_from_text(text: str) -> dict:
+    """
+    Extração simples por regex.
+    (Não precisa ser perfeita; a meta é reduzir ao máximo as perguntas.)
+    """
+    if not text:
+        return {}
+
+    clean = re.sub(r"[ \t]+", " ", text)
+    out = {}
+
+    # Nome
+    out["nome_produto"] = _pick_first(
+        [
+            r"(?:Produto|Nome do produto|Nome)\s*[:\-]\s*(.+)",
+        ],
+        clean,
+    )
+
+    # Marca/Linha
+    out["marca_linha"] = _pick_first(
+        [
+            r"(?:Marca|Linha|Marca\/Linha)\s*[:\-]\s*(.+)",
+            r"(?:Fabricante)\s*[:\-]\s*(.+)",
+        ],
+        clean,
+    )
+
+    # Materiais
+    out["materiais"] = _pick_first(
+        [
+            r"(?:Materiais?|Composição|Estrutura)\s*[:\-]\s*(.+)",
+        ],
+        clean,
+    )
+
+    # Dimensões (muitos PDFs trazem "L x A x P" ou "CxLxA")
+    out["dimensoes"] = _pick_first(
+        [
+            r"(?:Dimens(?:ões|oes)|Medidas)\s*[:\-]\s*([0-9., ]+\s*[xX]\s*[0-9., ]+\s*[xX]\s*[0-9., ]+\s*(?:cm|mm|m)?)",
+            r"(?:Largura|L)\s*[:\-]\s*([0-9., ]+)\s*(?:cm|mm|m).{0,80}?(?:Altura|A)\s*[:\-]\s*([0-9., ]+)\s*(?:cm|mm|m).{0,80}?(?:Profundidade|P)\s*[:\-]\s*([0-9., ]+)\s*(?:cm|mm|m)",
+        ],
+        clean,
+    )
+    # Se pegou L/A/P separado (3 grupos), monta
+    m_lap = re.search(
+        r"(?:Largura|L)\s*[:\-]\s*([0-9., ]+)\s*(cm|mm|m).{0,80}?(?:Altura|A)\s*[:\-]\s*([0-9., ]+)\s*(cm|mm|m).{0,80}?(?:Profundidade|P)\s*[:\-]\s*([0-9., ]+)\s*(cm|mm|m)",
+        clean,
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+    if m_lap and not out.get("dimensoes"):
+        out["dimensoes"] = f"{m_lap.group(1)}x{m_lap.group(3)}x{m_lap.group(5)} {m_lap.group(2)}"
+
+    # Peso suportado
+    out["peso_suportado"] = _pick_first(
+        [
+            r"(?:Peso suportado|Peso máximo|Peso maximo)\s*[:\-]\s*([0-9., ]+\s*kg)",
+            r"(?:Suporta)\s*[:\-]?\s*([0-9., ]+\s*kg)",
+        ],
+        clean,
+    )
+
+    # Conteúdo da embalagem
+    out["conteudo_embalagem"] = _pick_first(
+        [
+            r"(?:Conteúdo da embalagem|Conteudo da embalagem|Itens inclusos|Conteúdo)\s*[:\-]\s*(.+)",
+        ],
+        clean,
+    )
+
+    # Montagem
+    montagem = _pick_first(
+        [
+            r"(?:Montagem|Requer montagem|Necessita montagem)\s*[:\-]\s*(sim|não|nao)",
+        ],
+        clean,
+    )
+    if montagem:
+        out["necessita_montagem"] = _normalize_yes_no(montagem)
+
+    # Tempo / nível (se existir no PDF)
+    out["tempo_montagem"] = _pick_first(
+        [
+            r"(?:Tempo de montagem|Tempo estimado|Tempo médio)\s*[:\-]\s*(.+)",
+        ],
+        clean,
+    )
+    out["nivel_montagem"] = _pick_first(
+        [
+            r"(?:Nível de montagem|Nivel de montagem|Dificuldade)\s*[:\-]\s*(fácil|facil|médio|medio|difícil|dificil)",
+        ],
+        clean,
+    )
+
+    # Limpa valores muito longos (linha inteira)
+    for k, v in list(out.items()):
+        if isinstance(v, str):
+            v = v.strip()
+            if "\n" in v:
+                v = v.split("\n")[0].strip()
+            if len(v) > 200:
+                v = v[:200].strip()
+            out[k] = v
+
+    # remove vazios
+    return {k: v for k, v in out.items() if v}
+
+
+def _get_payload_and_files():
+    """
+    Suporta:
+    - multipart/form-data (FormData do script.js)
+    - application/json
+    """
+    # multipart
+    if request.form and len(request.form) > 0:
+        data = request.form.to_dict(flat=True)
+        files = request.files
+        return data, files
+
+    # json
+    j = request.get_json(silent=True)
+    if isinstance(j, dict):
+        return j, {}
+
+    return {}, {}
+
+
+def _validate_minimum(data: dict):
+    missing = []
+    for f in REQUIRED_FIELDS:
+        if not data.get(f) or str(data.get(f)).strip() == "":
+            missing.append(f)
+
+    # regra: se montagem = sim, tempo/nivel viram obrigatórios
+    if _normalize_yes_no(data.get("necessita_montagem", "")) == "sim":
+        if not data.get("tempo_montagem"):
+            missing.append("tempo_montagem")
+        if not data.get("nivel_montagem"):
+            missing.append("nivel_montagem")
+
+    if missing:
+        return {
+            "status": "missing_fields",
+            "missing": missing,
+            "questions": {k: QUESTIONS.get(k, k) for k in missing},
+        }
+    return None
+
+
+def _merge_extracted_with_manual(extracted: dict, manual: dict) -> dict:
+    # manual sempre vence (o que o usuário digitou é a verdade)
+    merged = {}
+    merged.update(extracted or {})
+    merged.update({k: v for k, v in (manual or {}).items() if v is not None})
+    # normalizações pontuais
+    if "necessita_montagem" in merged:
+        merged["necessita_montagem"] = _normalize_yes_no(merged["necessita_montagem"])
+    return merged
+
+
+@app.route("/generate", methods=["POST"])
 @login_required
 def generate():
-    """
-    Recebe multipart/form-data (payload JSON + uploads) ou JSON puro.
-    IMPORTANTE: seu script.js envia FormData com:
-      - payload: JSON.stringify({ product_data: state.data, meta: state.meta })
-      - file_pdf / file_photo / file_sheet (opcionais)
-    """
-    try:
-        if request.is_json:
-            payload = request.get_json(silent=True) or {}
-        else:
-            payload_raw = request.form.get("payload", "{}")
-            payload = json.loads(payload_raw or "{}")
+    manual_data, files = _get_payload_and_files()
 
-        product_data = payload.get("product_data") or {}
-        meta = payload.get("meta") or {}
+    # tenta extrair do PDF
+    extracted = {}
+    pdf_file = files.get("file_pdf") if files else None
+    if pdf_file and getattr(pdf_file, "filename", ""):
+        text = _extract_pdf_text(pdf_file)
+        extracted = _extract_fields_from_text(text)
+        app.logger.info("PDF extraído: campos=%s", list(extracted.keys()))
 
-        extracted, uploads_ctx = process_uploads(request.files)
-        merged_product = {**extracted, **product_data}  # manual vence extraído
+    merged = _merge_extracted_with_manual(extracted, manual_data)
 
-        marketplace = merged_product.get("marketplace_alvo") or merged_product.get("marketplace")
+    # valida mínimo
+    error = _validate_minimum(merged)
+    if error:
+        return jsonify(error), 200
 
-        result = specialist.run(
-            product_data=merged_product,
-            marketplace=marketplace,
-            uploads={"context": uploads_ctx, "meta": meta},
-        )
+    # roda agente
+    result = run_agent(merged)
 
-        return jsonify(result)
-    except Exception as e:
-        app.logger.exception("/generate failed")
-        return jsonify({"status": "error", "message": str(e)}), 500
+    if not isinstance(result, dict):
+        return jsonify({"status": "error", "message": "Resposta inválida do agente."}), 500
+
+    if result.get("status") == "error":
+        return jsonify(result), 500
+
+    # garante status ok
+    result.setdefault("status", "ok")
+    return jsonify(result), 200
 
 
 @app.post("/generate-docx")
 @login_required
 def generate_docx():
-    try:
-        if request.is_json:
-            payload = request.get_json(silent=True) or {}
-        else:
-            payload_raw = request.form.get("payload", "{}")
-            payload = json.loads(payload_raw or "{}")
+    manual_data, files = _get_payload_and_files()
 
-        product_data = payload.get("product_data") or {}
-        meta = payload.get("meta") or {}
+    extracted = {}
+    pdf_file = files.get("file_pdf") if files else None
+    if pdf_file and getattr(pdf_file, "filename", ""):
+        text = _extract_pdf_text(pdf_file)
+        extracted = _extract_fields_from_text(text)
 
-        extracted, uploads_ctx = process_uploads(request.files)
-        merged_product = {**extracted, **product_data}
-        marketplace = merged_product.get("marketplace_alvo") or merged_product.get("marketplace")
+    merged = _merge_extracted_with_manual(extracted, manual_data)
 
-        result = specialist.run(
-            product_data=merged_product,
-            marketplace=marketplace,
-            uploads={"context": uploads_ctx, "meta": meta},
-        )
+    error = _validate_minimum(merged)
+    if error:
+        return jsonify(error), 200
 
-        if result.get("status") != "ok":
-            # contrato da UI: missing_fields também precisa ser 200
-            return jsonify(result), 200
+    result = run_agent(merged)
+    if not isinstance(result, dict) or result.get("status") != "ok":
+        return jsonify(result if isinstance(result, dict) else {"status": "error", "message": "Falha ao gerar."}), 400
 
-        # manter contrato do seu docx_builder: retorna file-like (BytesIO)
-        docx_file = generate_docx_from_data(result)
-        return send_file(
-            docx_file,
-            as_attachment=True,
-            download_name="anuncio.docx",
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )
-    except Exception as e:
-        app.logger.exception("/generate-docx failed")
-        return jsonify({"status": "error", "message": str(e)}), 500
+    docx_bytes = build_docx(result, merged)
+
+    filename = f"anuncio_{re.sub(r'[^a-zA-Z0-9]+','_', (merged.get('nome_produto','anuncio'))).lower()}.docx"
+    return send_file(
+        io.BytesIO(docx_bytes),
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        as_attachment=True,
+        download_name=filename
+    )
 
 
 if __name__ == "__main__":
+    debug_mode = os.environ.get("FLASK_DEBUG", "False").lower() in ("true", "1", "t")
     port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=debug_mode)
